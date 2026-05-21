@@ -8,8 +8,12 @@ class CalculadoraGoldApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Calculadora de Gold - Aika BR")
-        self.root.geometry("480x500")
+        self.root.geometry("480x600")
 
+        # --- VARIÁVEL DA COLA ADESIVA ---
+        # Preço base (0% de taxa) descoberto pela matemática do jogo
+        self.preco_base_cola = 800.0 
+        
         self.default_items = {
             "Lingote de Heliotropo": 34452.0,
             "Couro Cristalino Rígido": 20640.0,
@@ -21,25 +25,19 @@ class CalculadoraGoldApp:
         self.custom_items = {}
         self.qty_vars = {}
 
-        # --- CORREÇÃO DO ERRO DE PERMISSÃO ---
-        # Descobre qual é a pasta segura do sistema (AppData no Windows)
         if platform.system() == "Windows":
             base_path = os.getenv('APPDATA')
         else:
-            base_path = os.path.expanduser("~") # Para quem usar Mac/Linux
+            base_path = os.path.expanduser("~") 
             
-        # Cria uma pastinha oficial do seu programa lá dentro
         pasta_app = os.path.join(base_path, "CalculadoraGoldAika")
         
         if not os.path.exists(pasta_app):
             os.makedirs(pasta_app)
             
-        # O arquivo será salvo com segurança sem problemas de permissão
         self.arquivo_salvamento = os.path.join(pasta_app, "itens_salvos.json")
-        
         self.carregar_itens_salvos()
 
-        # Criando as Abas
         self.notebook = ttk.Notebook(root)
         self.notebook.pack(padx=10, pady=10, fill='both', expand=True)
 
@@ -68,7 +66,7 @@ class CalculadoraGoldApp:
             messagebox.showerror("Erro Crítico", f"Erro de permissão ao salvar: {e}")
 
     def setup_calc_tab(self):
-        tax_frame = ttk.LabelFrame(self.tab_calc, text="Selecione a Taxa de Venda (%)")
+        tax_frame = ttk.LabelFrame(self.tab_calc, text="Selecione a Taxa da Nação (%)")
         tax_frame.pack(fill='x', padx=10, pady=5)
 
         self.tax_var = tk.IntVar(value=5) 
@@ -83,25 +81,50 @@ class CalculadoraGoldApp:
         self.scrollbar = ttk.Scrollbar(self.items_frame, orient="vertical", command=self.canvas.yview)
         self.scrollable_frame = ttk.Frame(self.canvas)
 
-        self.scrollable_frame.bind(
-            "<Configure>",
-            lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
-        )
+        self.scrollable_frame.bind("<Configure>", lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
         self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
         self.canvas.configure(yscrollcommand=self.scrollbar.set)
-
         self.canvas.pack(side="left", fill="both", expand=True)
         self.scrollbar.pack(side="right", fill="y")
 
         self.build_items_list()
 
+        self.craft_frame = ttk.LabelFrame(self.tab_calc, text="Estratégia de Manufatura (Pesado -> Rígido)")
+        self.craft_frame.pack(fill='x', padx=10, pady=5)
+
+        self.simular_craft_var = tk.BooleanVar(value=False)
+        self.craft_critico_var = tk.BooleanVar(value=False)
+
+        chk_craft = ttk.Checkbutton(self.craft_frame, text="Simular Manufatura (Consome 2 Pesado + 3 Colas Adesivas)", 
+                                    variable=self.simular_craft_var, command=self.toggle_craft_options)
+        chk_craft.grid(row=0, column=0, columnspan=2, padx=10, pady=5, sticky='w')
+
+        self.rb_normal = ttk.Radiobutton(self.craft_frame, text="Padrão (Cria 1 Rígido)", variable=self.craft_critico_var, value=False, command=self.calculate_total)
+        self.rb_critico = ttk.Radiobutton(self.craft_frame, text="Crítico (Cria 2 Rígidos)", variable=self.craft_critico_var, value=True, command=self.calculate_total)
+        
+        self.rb_normal.grid(row=1, column=0, padx=20, pady=2, sticky='w')
+        self.rb_critico.grid(row=1, column=1, padx=10, pady=2, sticky='w')
+
+        # === CORREÇÃO: CRIAR O TEXTO DO TOTAL PRIMEIRO ===
         btn_frame = ttk.Frame(self.tab_calc)
         btn_frame.pack(fill='x', padx=10, pady=10)
 
         ttk.Button(btn_frame, text="Calcular Total", command=self.calculate_total).pack(side='left')
 
-        self.lbl_total = ttk.Label(btn_frame, text="Total de Gold: 0", font=("Arial", 12, "bold"))
+        self.lbl_total = tk.Label(btn_frame, text="Total de Gold: 0", font=("Arial", 11, "bold"), justify="right")
         self.lbl_total.pack(side='right', padx=10)
+
+        # Agora sim a gente manda o programa testar as opções, porque a label já existe!
+        self.toggle_craft_options()
+
+    def toggle_craft_options(self):
+        if self.simular_craft_var.get():
+            self.rb_normal.state(['!disabled'])
+            self.rb_critico.state(['!disabled'])
+        else:
+            self.rb_normal.state(['disabled'])
+            self.rb_critico.state(['disabled'])
+        self.calculate_total()
 
     def build_items_list(self):
         for widget in self.scrollable_frame.winfo_children():
@@ -192,8 +215,6 @@ class CalculadoraGoldApp:
         base_value = val / (1 - tax / 100.0)
 
         self.custom_items[name] = base_value
-        
-        # Agora o erro não vai acontecer!
         self.salvar_itens_customizados()
         self.build_items_list()
 
@@ -208,27 +229,73 @@ class CalculadoraGoldApp:
 
     def calculate_total(self, event=None):
         tax = self.tax_var.get()
-        multiplier = 1 - (tax / 100.0)
-        total_gold = 0.0
+        # VENDER = -TAXA
+        multiplier_venda = 1 - (tax / 100.0)
+        # COMPRAR = +TAXA
+        multiplier_compra = 1 + (tax / 100.0)
 
+        qtys_digitadas = {}
         for item, var in self.qty_vars.items():
-            qty_str = var.get()
             try:
-                qty = int(qty_str)
+                qtys_digitadas[item] = int(var.get())
             except ValueError:
-                qty = 0
+                qtys_digitadas[item] = 0
 
-            if item in self.default_items:
-                base_val = self.default_items[item]
+        def calcular_gold_do_inventario(dicionario_quantidades):
+            gold = 0.0
+            for item, qty in dicionario_quantidades.items():
+                if item in self.default_items:
+                    base_val = self.default_items[item]
+                elif item in self.custom_items:
+                    base_val = self.custom_items[item]
+                else:
+                    base_val = 0.0
+                gold += (base_val * multiplier_venda) * qty
+            return gold
+
+        total_sem_craft = calcular_gold_do_inventario(qtys_digitadas)
+
+        if self.simular_craft_var.get():
+            qtys_simuladas = qtys_digitadas.copy()
+            nome_pesado = "Couro Cristalino Pesado"
+            nome_rigido = "Couro Cristalino Rígido"
+            
+            qtd_pesado = qtys_simuladas.get(nome_pesado, 0)
+            qtd_rigido = qtys_simuladas.get(nome_rigido, 0)
+
+            crafts_possiveis = qtd_pesado // 2
+            pesados_sobrando = qtd_pesado % 2 
+
+            if self.craft_critico_var.get():
+                rigidos_ganhos = crafts_possiveis * 2 
             else:
-                base_val = self.custom_items[item]
-                
-            total_gold += (base_val * multiplier) * qty
+                rigidos_ganhos = crafts_possiveis * 1 
 
-        total_arredondado = int(round(total_gold))
-        total_formatado = f"{total_arredondado:,}".replace(",", ".")
+            qtys_simuladas[nome_pesado] = pesados_sobrando
+            qtys_simuladas[nome_rigido] = qtd_rigido + rigidos_ganhos
 
-        self.lbl_total.config(text=f"Total de Gold: {total_formatado}")
+            gold_simulado = calcular_gold_do_inventario(qtys_simuladas)
+
+            # CÁLCULO DA COLA ADESIVA AJUSTADO PELA TAXA
+            preco_cola_atual = self.preco_base_cola * multiplier_compra
+            custo_colas = crafts_possiveis * 3 * preco_cola_atual
+            
+            total_com_craft = gold_simulado - custo_colas
+            diferenca = total_com_craft - total_sem_craft
+
+            tot_str = f"{int(round(total_com_craft)):,}".replace(",", ".")
+            dif_str = f"{int(round(abs(diferenca))):,}".replace(",", ".")
+
+            if diferenca > 0:
+                self.lbl_total.config(text=f"Total c/ Manufatura: {tot_str}\n(+{dif_str} de Lucro!)", fg="green")
+            elif diferenca < 0:
+                self.lbl_total.config(text=f"Total c/ Manufatura: {tot_str}\n(-{dif_str} de Prejuízo!)", fg="red")
+            else:
+                self.lbl_total.config(text=f"Total c/ Manufatura: {tot_str}\n(Elas por Elas / Sem lucro)", fg="black")
+
+        else:
+            tot_str = f"{int(round(total_sem_craft)):,}".replace(",", ".")
+            self.lbl_total.config(text=f"Total de Gold: {tot_str}", fg="black")
 
 if __name__ == "__main__":
     root = tk.Tk()
