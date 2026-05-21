@@ -1,14 +1,16 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
+import json
+import os
 
 class CalculadoraGoldApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Calculadora de Gold - Estrada Espiral")
-        self.root.geometry("450x450")
+        self.root.title("Calculadora de Gold - Aika BR")
+        self.root.geometry("480x500") # Aumentei um pouco o tamanho da janela
 
-        # 1. Os 5 itens setados por padrão definidos por você
-        self.items = {
+        # 1. Os 5 itens setados por padrão (Esses nunca serão apagados)
+        self.default_items = {
             "Lingote de Heliotropo": 34452.0,
             "Couro Cristalino Rígido": 20640.0,
             "Couro Cristalino Pesado": 8720.0,
@@ -16,9 +18,16 @@ class CalculadoraGoldApp:
             "Tecido de Scotia": 7768.0
         }
 
+        # 2. Dicionário para guardar os itens criados pelo usuário
+        self.custom_items = {}
+        self.arquivo_salvamento = "itens_salvos.json"
+        
+        # Carrega os itens salvos do PC do usuário (se existirem)
+        self.carregar_itens_salvos()
+
         self.qty_vars = {}
 
-        # 2. Criando as Abas
+        # 3. Criando as Abas
         self.notebook = ttk.Notebook(root)
         self.notebook.pack(padx=10, pady=10, fill='both', expand=True)
 
@@ -31,23 +40,57 @@ class CalculadoraGoldApp:
         self.setup_calc_tab()
         self.setup_add_tab()
 
+    # --- FUNÇÕES DE SALVAR E CARREGAR ---
+    def carregar_itens_salvos(self):
+        """Lê o arquivo JSON para recuperar os itens que o usuário criou nas vezes passadas."""
+        if os.path.exists(self.arquivo_salvamento):
+            try:
+                with open(self.arquivo_salvamento, 'r', encoding='utf-8') as f:
+                    self.custom_items = json.load(f)
+            except Exception:
+                self.custom_items = {}
+
+    def salvar_itens_customizados(self):
+        """Salva as alterações no arquivo JSON."""
+        try:
+            with open(self.arquivo_salvamento, 'w', encoding='utf-8') as f:
+                json.dump(self.custom_items, f, ensure_ascii=False, indent=4)
+        except Exception as e:
+            messagebox.showerror("Erro", f"Não foi possível salvar seus itens: {e}")
+
+    # --- INTERFACE ---
     def setup_calc_tab(self):
-        # --- Seção de Botões de Seleção da Taxa ---
+        # Botões de Seleção da Taxa
         tax_frame = ttk.LabelFrame(self.tab_calc, text="Selecione a Taxa de Venda (%)")
         tax_frame.pack(fill='x', padx=10, pady=5)
 
-        self.tax_var = tk.IntVar(value=5) # 5% como padrão
+        self.tax_var = tk.IntVar(value=5) 
         ttk.Radiobutton(tax_frame, text="0%", variable=self.tax_var, value=0, command=self.calculate_total).pack(side='left', padx=15, pady=5)
         ttk.Radiobutton(tax_frame, text="5%", variable=self.tax_var, value=5, command=self.calculate_total).pack(side='left', padx=15, pady=5)
         ttk.Radiobutton(tax_frame, text="15%", variable=self.tax_var, value=15, command=self.calculate_total).pack(side='left', padx=15, pady=5)
 
-        # --- Seção da Lista de Itens ---
+        # Seção da Lista de Itens com Barra de Rolagem
         self.items_frame = ttk.LabelFrame(self.tab_calc, text="Inventário (Nome e Quantidade)")
         self.items_frame.pack(fill='both', expand=True, padx=10, pady=5)
 
+        # Adicionando o Canvas e Scrollbar (Barra de rolagem) para caso tenham muitos itens
+        self.canvas = tk.Canvas(self.items_frame, highlightthickness=0)
+        self.scrollbar = ttk.Scrollbar(self.items_frame, orient="vertical", command=self.canvas.yview)
+        self.scrollable_frame = ttk.Frame(self.canvas)
+
+        self.scrollable_frame.bind(
+            "<Configure>",
+            lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+        )
+        self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
+
+        self.canvas.pack(side="left", fill="both", expand=True)
+        self.scrollbar.pack(side="right", fill="y")
+
         self.build_items_list()
 
-        # --- Botão de Calcular e Resultado ---
+        # Botão de Calcular e Resultado
         btn_frame = ttk.Frame(self.tab_calc)
         btn_frame.pack(fill='x', padx=10, pady=10)
 
@@ -57,28 +100,40 @@ class CalculadoraGoldApp:
         self.lbl_total.pack(side='right', padx=10)
 
     def build_items_list(self):
-        # Limpa a lista atual 
-        for widget in self.items_frame.winfo_children():
+        # Limpa a lista atual na tela
+        for widget in self.scrollable_frame.winfo_children():
             widget.destroy()
         self.qty_vars.clear()
 
-        # Cabeçalho
-        ttk.Label(self.items_frame, text="Nome do Item", font=("Arial", 9, "bold")).grid(row=0, column=0, padx=10, pady=5, sticky='w')
-        ttk.Label(self.items_frame, text="Quantidade", font=("Arial", 9, "bold")).grid(row=0, column=1, padx=10, pady=5, sticky='w')
+        # Cabeçalhos
+        ttk.Label(self.scrollable_frame, text="").grid(row=0, column=0) # Espaço vazio pro X
+        ttk.Label(self.scrollable_frame, text="Nome do Item", font=("Arial", 9, "bold")).grid(row=0, column=1, padx=5, pady=5, sticky='w')
+        ttk.Label(self.scrollable_frame, text="Quantidade", font=("Arial", 9, "bold")).grid(row=0, column=2, padx=10, pady=5, sticky='w')
 
-        # Cria uma linha para cada item
+        # Junta os itens padrões com os customizados para exibir na tela
+        todos_itens = list(self.default_items.keys()) + list(self.custom_items.keys())
+        
         row = 1
-        for item in self.items:
-            ttk.Label(self.items_frame, text=item).grid(row=row, column=0, padx=10, pady=2, sticky='w')
+        for item in todos_itens:
+            is_custom = item in self.custom_items
+            
+            # Se for um item adicionado pelo usuário, coloca o botão X
+            if is_custom:
+                # Botão X vermelho, passando o nome do item que será deletado
+                btn_del = tk.Button(self.scrollable_frame, text=" X ", fg="red", relief="flat", font=("Arial", 8, "bold"),
+                                    cursor="hand2", command=lambda i=item: self.deletar_item(i))
+                btn_del.grid(row=row, column=0, padx=5, pady=2)
+            else:
+                # Se for item padrão, deixa o espaço em branco na coluna do X
+                ttk.Label(self.scrollable_frame, text="").grid(row=row, column=0)
+
+            ttk.Label(self.scrollable_frame, text=item).grid(row=row, column=1, padx=5, pady=2, sticky='w')
             
             var = tk.StringVar(value="0")
             self.qty_vars[item] = var
             
-            # Caixa de digitação da quantidade
-            entry = ttk.Entry(self.items_frame, textvariable=var, width=15)
-            entry.grid(row=row, column=1, padx=10, pady=2)
-            
-            # Faz a tecla "Enter" acionar o cálculo automático
+            entry = ttk.Entry(self.scrollable_frame, textvariable=var, width=15)
+            entry.grid(row=row, column=2, padx=10, pady=2)
             entry.bind("<Return>", self.calculate_total)
             
             row += 1
@@ -106,6 +161,17 @@ class CalculadoraGoldApp:
 
         ttk.Button(frame, text="Adicionar Item", command=self.add_item).grid(row=3, column=0, columnspan=2, pady=20)
 
+    # --- LÓGICA DO PROGRAMA ---
+    def deletar_item(self, item_name):
+        # Pergunta de segurança antes de excluir
+        resposta = messagebox.askyesno("Excluir Item", f"Deseja realmente excluir '{item_name}' da sua lista salva?")
+        if resposta:
+            if item_name in self.custom_items:
+                del self.custom_items[item_name] # Remove da memória
+                self.salvar_itens_customizados() # Salva o arquivo sem o item
+                self.build_items_list()          # Atualiza a tela
+                self.calculate_total()           # Recalcula o gold caso tenha sobrado número lá
+
     def add_item(self):
         name = self.new_item_name.get().strip()
         val_str = self.new_item_value.get().replace(',', '.')
@@ -113,6 +179,11 @@ class CalculadoraGoldApp:
 
         if not name:
             messagebox.showerror("Erro", "O nome do item não pode estar vazio.")
+            return
+
+        # Impede que o usuário crie um item com o mesmo nome de um já existente
+        if name in self.default_items or name in self.custom_items:
+            messagebox.showwarning("Aviso", "Já existe um item com esse nome na sua lista.")
             return
 
         try:
@@ -125,12 +196,14 @@ class CalculadoraGoldApp:
 
         base_value = val / (1 - tax / 100.0)
 
-        self.items[name] = base_value
+        # Adiciona na lista de costumizados e salva permanentemente
+        self.custom_items[name] = base_value
+        self.salvar_itens_customizados()
+        
         self.build_items_list()
 
-        # O formata_base apenas arredonda e coloca o ponto para exibir na mensagem de sucesso
         base_formatada = f"{int(round(base_value)):,}".replace(",", ".")
-        messagebox.showinfo("Sucesso", f"Item '{name}' adicionado com sucesso!\nValor base (0% de taxa) registrado como: {base_formatada}")
+        messagebox.showinfo("Sucesso", f"Item '{name}' salvo com sucesso!\nValor base (0% de taxa) registrado como: {base_formatada}")
 
         self.new_item_name.set("")
         self.new_item_value.set("")
@@ -138,7 +211,6 @@ class CalculadoraGoldApp:
 
         self.notebook.select(0)
 
-    # O "event=None" é necessário para que a tecla "Enter" consiga chamar a função
     def calculate_total(self, event=None):
         tax = self.tax_var.get()
         multiplier = 1 - (tax / 100.0)
@@ -151,13 +223,15 @@ class CalculadoraGoldApp:
             except ValueError:
                 qty = 0
 
-            base_val = self.items[item]
+            # Verifica se o item puxado vem da lista padrão ou da customizada
+            if item in self.default_items:
+                base_val = self.default_items[item]
+            else:
+                base_val = self.custom_items[item]
+                
             total_gold += (base_val * multiplier) * qty
 
-        # Arredonda o valor total (tira os centavos)
         total_arredondado = int(round(total_gold))
-        
-        # Formata o número colocando ponto na grandeza de milhar (Ex: 1000 -> 1.000)
         total_formatado = f"{total_arredondado:,}".replace(",", ".")
 
         self.lbl_total.config(text=f"Total de Gold: {total_formatado}")
