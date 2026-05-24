@@ -8,10 +8,9 @@ class CalculadoraGoldApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Calculadora de Gold - Aika BR")
-        self.root.geometry("480x600")
+        self.root.geometry("500x640") # Ajustado o tamanho para caber confortavelmente as novas caixas
 
         # --- VARIÁVEL DA COLA ADESIVA ---
-        # Preço base (0% de taxa) descoberto pela matemática do jogo
         self.preco_base_cola = 800.0 
         
         self.default_items = {
@@ -65,15 +64,49 @@ class CalculadoraGoldApp:
         except Exception as e:
             messagebox.showerror("Erro Crítico", f"Erro de permissão ao salvar: {e}")
 
+    def safe_get_tax(self, radio_var, string_var):
+        """Função auxiliar para ler as taxas de forma segura, aceitando vírgulas ou pontos."""
+        val = radio_var.get()
+        if val == -1: # Significa que a opção "Outra" está selecionada
+            try:
+                txt = string_var.get().replace(',', '.').strip()
+                if not txt:
+                    return 0.0
+                return float(txt)
+            except ValueError:
+                return 0.0
+        return float(val)
+
+    def on_custom_tax_change(self):
+        """Ativa automaticamente o rádio 'Outra' ao digitar na caixa de taxa de venda."""
+        self.tax_var.set(-1)
+        self.calculate_total()
+
+    def on_custom_craft_tax_change(self):
+        """Ativa automaticamente o rádio 'Outra' ao digitar na caixa de taxa de compra da cola."""
+        self.craft_tax_var.set(-1)
+        self.calculate_total()
+
     def setup_calc_tab(self):
-        tax_frame = ttk.LabelFrame(self.tab_calc, text="Selecione a Taxa da Nação (%)")
+        # 1. Seleção da Taxa (Venda)
+        tax_frame = ttk.LabelFrame(self.tab_calc, text="Selecione a Taxa da Nação - Venda (%)")
         tax_frame.pack(fill='x', padx=10, pady=5)
 
         self.tax_var = tk.IntVar(value=5) 
-        ttk.Radiobutton(tax_frame, text="0%", variable=self.tax_var, value=0, command=self.calculate_total).pack(side='left', padx=15, pady=5)
-        ttk.Radiobutton(tax_frame, text="5%", variable=self.tax_var, value=5, command=self.calculate_total).pack(side='left', padx=15, pady=5)
-        ttk.Radiobutton(tax_frame, text="15%", variable=self.tax_var, value=15, command=self.calculate_total).pack(side='left', padx=15, pady=5)
+        self.custom_tax_str = tk.StringVar(value="")
 
+        ttk.Radiobutton(tax_frame, text="0%", variable=self.tax_var, value=0, command=self.calculate_total).pack(side='left', padx=10, pady=5)
+        ttk.Radiobutton(tax_frame, text="5%", variable=self.tax_var, value=5, command=self.calculate_total).pack(side='left', padx=10, pady=5)
+        ttk.Radiobutton(tax_frame, text="15%", variable=self.tax_var, value=15, command=self.calculate_total).pack(side='left', padx=10, pady=5)
+        
+        # Opção personalizada para venda
+        ttk.Radiobutton(tax_frame, text="Outra:", variable=self.tax_var, value=-1, command=self.calculate_total).pack(side='left', padx=5, pady=5)
+        self.entry_custom_tax = ttk.Entry(tax_frame, textvariable=self.custom_tax_str, width=6)
+        self.entry_custom_tax.pack(side='left', padx=2, pady=5)
+        self.entry_custom_tax.bind("<KeyRelease>", lambda e: self.on_custom_tax_change())
+        ttk.Label(tax_frame, text="%").pack(side='left', pady=5)
+
+        # 2. Lista de Itens (Inventário)
         self.items_frame = ttk.LabelFrame(self.tab_calc, text="Inventário (Nome e Quantidade)")
         self.items_frame.pack(fill='both', expand=True, padx=10, pady=5)
 
@@ -89,15 +122,17 @@ class CalculadoraGoldApp:
 
         self.build_items_list()
 
+        # 3. Painel de Estratégia de Manufatura
         self.craft_frame = ttk.LabelFrame(self.tab_calc, text="Estratégia de Manufatura (Pesado -> Rígido)")
         self.craft_frame.pack(fill='x', padx=10, pady=5)
 
         self.simular_craft_var = tk.BooleanVar(value=False)
         self.craft_critico_var = tk.BooleanVar(value=False)
+        self.craft_tax_var = tk.IntVar(value=5) 
 
         chk_craft = ttk.Checkbutton(self.craft_frame, text="Simular Manufatura (Consome 2 Pesado + 3 Colas Adesivas)", 
                                     variable=self.simular_craft_var, command=self.toggle_craft_options)
-        chk_craft.grid(row=0, column=0, columnspan=2, padx=10, pady=5, sticky='w')
+        chk_craft.grid(row=0, column=0, columnspan=3, padx=10, pady=5, sticky='w')
 
         self.rb_normal = ttk.Radiobutton(self.craft_frame, text="Padrão (Cria 1 Rígido)", variable=self.craft_critico_var, value=False, command=self.calculate_total)
         self.rb_critico = ttk.Radiobutton(self.craft_frame, text="Crítico (Cria 2 Rígidos)", variable=self.craft_critico_var, value=True, command=self.calculate_total)
@@ -105,7 +140,32 @@ class CalculadoraGoldApp:
         self.rb_normal.grid(row=1, column=0, padx=20, pady=2, sticky='w')
         self.rb_critico.grid(row=1, column=1, padx=10, pady=2, sticky='w')
 
-        # === CORREÇÃO: CRIAR O TEXTO DO TOTAL PRIMEIRO ===
+        # Seletor de Taxa específico para a compra da Cola Adesiva
+        self.lbl_tax_cola = ttk.Label(self.craft_frame, text="Taxa de Compra da Cola:")
+        self.lbl_tax_cola.grid(row=2, column=0, padx=20, pady=5, sticky='w')
+
+        self.cola_tax_frame = ttk.Frame(self.craft_frame)
+        self.cola_tax_frame.grid(row=2, column=1, columnspan=2, pady=5, sticky='w')
+
+        self.rb_cola_0 = ttk.Radiobutton(self.cola_tax_frame, text="0%", variable=self.craft_tax_var, value=0, command=self.calculate_total)
+        self.rb_cola_5 = ttk.Radiobutton(self.cola_tax_frame, text="5%", variable=self.craft_tax_var, value=5, command=self.calculate_total)
+        self.rb_cola_15 = ttk.Radiobutton(self.cola_tax_frame, text="15%", variable=self.craft_tax_var, value=15, command=self.calculate_total)
+
+        self.rb_cola_0.pack(side='left', padx=5)
+        self.rb_cola_5.pack(side='left', padx=5)
+        self.rb_cola_15.pack(side='left', padx=5)
+
+        # Opção personalizada para compra de cola
+        self.rb_cola_custom = ttk.Radiobutton(self.cola_tax_frame, text="Outra:", variable=self.craft_tax_var, value=-1, command=self.calculate_total)
+        self.rb_cola_custom.pack(side='left', padx=5)
+        
+        self.custom_craft_tax_str = tk.StringVar(value="")
+        self.entry_custom_craft_tax = ttk.Entry(self.cola_tax_frame, textvariable=self.custom_craft_tax_str, width=6)
+        self.entry_custom_craft_tax.pack(side='left', padx=2)
+        self.entry_custom_craft_tax.bind("<KeyRelease>", lambda e: self.on_custom_craft_tax_change())
+        ttk.Label(self.cola_tax_frame, text="%").pack(side='left')
+
+        # 4. Botão Calcular e Resultado
         btn_frame = ttk.Frame(self.tab_calc)
         btn_frame.pack(fill='x', padx=10, pady=10)
 
@@ -114,16 +174,25 @@ class CalculadoraGoldApp:
         self.lbl_total = tk.Label(btn_frame, text="Total de Gold: 0", font=("Arial", 11, "bold"), justify="right")
         self.lbl_total.pack(side='right', padx=10)
 
-        # Agora sim a gente manda o programa testar as opções, porque a label já existe!
         self.toggle_craft_options()
 
     def toggle_craft_options(self):
         if self.simular_craft_var.get():
             self.rb_normal.state(['!disabled'])
             self.rb_critico.state(['!disabled'])
+            self.rb_cola_0.state(['!disabled'])
+            self.rb_cola_5.state(['!disabled'])
+            self.rb_cola_15.state(['!disabled'])
+            self.rb_cola_custom.state(['!disabled'])
+            self.entry_custom_craft_tax.state(['!disabled'])
         else:
             self.rb_normal.state(['disabled'])
             self.rb_critico.state(['disabled'])
+            self.rb_cola_0.state(['disabled'])
+            self.rb_cola_5.state(['disabled'])
+            self.rb_cola_15.state(['disabled'])
+            self.rb_cola_custom.state(['disabled'])
+            self.entry_custom_craft_tax.state(['disabled'])
         self.calculate_total()
 
     def build_items_list(self):
@@ -173,12 +242,20 @@ class CalculadoraGoldApp:
 
         ttk.Label(frame, text="Esse valor já é baseado em\nqual % de taxa?").grid(row=2, column=0, sticky='w', pady=10)
         self.new_item_tax = tk.IntVar(value=0)
+        self.custom_new_item_tax_str = tk.StringVar(value="")
         
         tax_cb_frame = ttk.Frame(frame)
         tax_cb_frame.grid(row=2, column=1, pady=10, sticky='w')
         ttk.Radiobutton(tax_cb_frame, text="0%", variable=self.new_item_tax, value=0).pack(side='left', padx=2)
         ttk.Radiobutton(tax_cb_frame, text="5%", variable=self.new_item_tax, value=5).pack(side='left', padx=2)
         ttk.Radiobutton(tax_cb_frame, text="15%", variable=self.new_item_tax, value=15).pack(side='left', padx=2)
+        
+        # Opção personalizada para o cadastro de itens novos
+        ttk.Radiobutton(tax_cb_frame, text="Outra:", variable=self.new_item_tax, value=-1).pack(side='left', padx=2)
+        self.entry_custom_new_tax = ttk.Entry(tax_cb_frame, textvariable=self.custom_new_item_tax_str, width=6)
+        self.entry_custom_new_tax.pack(side='left', padx=2)
+        self.entry_custom_new_tax.bind("<KeyRelease>", lambda e: self.new_item_tax.set(-1))
+        ttk.Label(tax_cb_frame, text="%").pack(side='left')
 
         ttk.Button(frame, text="Adicionar Item", command=self.add_item).grid(row=3, column=0, columnspan=2, pady=20)
 
@@ -194,7 +271,9 @@ class CalculadoraGoldApp:
     def add_item(self):
         name = self.new_item_name.get().strip()
         val_str = self.new_item_value.get().replace(',', '.')
-        tax = self.new_item_tax.get()
+        
+        # Usa a função auxiliar para ler a taxa
+        tax = self.safe_get_tax(self.new_item_tax, self.custom_new_item_tax_str)
 
         if not name:
             messagebox.showerror("Erro", "O nome do item não pode estar vazio.")
@@ -212,6 +291,11 @@ class CalculadoraGoldApp:
             messagebox.showerror("Erro", "Insira um valor numérico positivo para o item.")
             return
 
+        # Impede divisão por zero caso o usuário digite 100% de taxa
+        if tax >= 100.0:
+            messagebox.showerror("Erro", "A taxa não pode ser igual ou maior que 100%.")
+            return
+
         base_value = val / (1 - tax / 100.0)
 
         self.custom_items[name] = base_value
@@ -219,20 +303,24 @@ class CalculadoraGoldApp:
         self.build_items_list()
 
         base_formatada = f"{int(round(base_value)):,}".replace(",", ".")
-        messagebox.showinfo("Sucesso", f"Item '{name}' salvo com sucesso!\nValor base (0% de taxa) registrado como: {base_formatada}")
+        messagebox.showinfo("Sucesso", f"Item '{name}' salvo!\nValor base (0%): {base_formatada}")
 
         self.new_item_name.set("")
         self.new_item_value.set("")
         self.new_item_tax.set(0)
+        self.custom_new_item_tax_str.set("")
 
         self.notebook.select(0)
 
     def calculate_total(self, event=None):
-        tax = self.tax_var.get()
+        # Lê as taxas do seletor padrão ou da caixinha personalizada
+        tax_venda = self.safe_get_tax(self.tax_var, self.custom_tax_str)
+        tax_compra_cola = self.safe_get_tax(self.craft_tax_var, self.custom_craft_tax_str)
+        
         # VENDER = -TAXA
-        multiplier_venda = 1 - (tax / 100.0)
+        multiplier_venda = 1 - (tax_venda / 100.0)
         # COMPRAR = +TAXA
-        multiplier_compra = 1 + (tax / 100.0)
+        multiplier_compra = 1 + (tax_compra_cola / 100.0)
 
         qtys_digitadas = {}
         for item, var in self.qty_vars.items():
@@ -276,7 +364,6 @@ class CalculadoraGoldApp:
 
             gold_simulado = calcular_gold_do_inventario(qtys_simuladas)
 
-            # CÁLCULO DA COLA ADESIVA AJUSTADO PELA TAXA
             preco_cola_atual = self.preco_base_cola * multiplier_compra
             custo_colas = crafts_possiveis * 3 * preco_cola_atual
             
