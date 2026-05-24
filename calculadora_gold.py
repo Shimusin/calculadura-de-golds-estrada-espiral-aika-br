@@ -366,8 +366,9 @@ class CalculadoraGoldApp:
 
             preco_cola_atual = self.preco_base_cola * multiplier_compra
             custo_colas = crafts_possiveis * 3 * preco_cola_atual
+            custo_sistema_craft = crafts_possiveis * 10 # custo fixo do sistema de manufatura (10 gold por craft)
             
-            total_com_craft = gold_simulado - custo_colas
+            total_com_craft = gold_simulado - custo_colas - custo_sistema_craft
             diferenca = total_com_craft - total_sem_craft
 
             tot_str = f"{int(round(total_com_craft)):,}".replace(",", ".")
