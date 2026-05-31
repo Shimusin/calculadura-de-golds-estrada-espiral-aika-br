@@ -8,7 +8,35 @@ class CalculadoraGoldApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Calculadora de Gold - Aika BR")
-        self.root.geometry("520x640") 
+        self.root.geometry("520x680") 
+
+        # --- PALETA DE CORES PREMIUM ---
+        self.bg_dark = "#0b0f19"      # Azul Espacial Profundo (Fundo principal)
+        self.bg_card = "#151b2d"      # Azul de Alta Tecnologia (Cards e inputs)
+        self.border_color = "#232d4b"  # Slate escuro para bordas sutis
+        self.fg_white = "#f8fafc"      # Branco Suave para textos principais
+        self.fg_gray = "#64748b"       # Cinza Slate para textos secundários
+        self.accent_gold = "#f59e0b"   # Ouro/Amber para destaques ativos
+        
+        # Cores de feedback visual brilhantes
+        self.color_success = "#10b981" # Verde Esmeralda
+        self.color_danger = "#ef4444"  # Vermelho Coral
+        self.color_warning = "#f97316" # Laranja
+
+        self.root.configure(bg=self.bg_dark)
+
+        # --- FORÇAR BARRA DE TÍTULO ESCURA NO WINDOWS ---
+        try:
+            import ctypes
+            self.root.update()
+            DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+            set_window_attribute = ctypes.windll.dwmapi.DwmSetWindowAttribute
+            get_parent = ctypes.windll.user32.GetParent
+            hwnd = get_parent(self.root.winfo_id())
+            value = ctypes.c_int(2)  # Ativa o modo escuro imersivo nativo
+            set_window_attribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ctypes.byref(value), ctypes.sizeof(value))
+        except Exception:
+            pass
 
         # --- VARIÁVEIS DE DADOS ---
         self.preco_base_cola = 800.0 
@@ -23,9 +51,11 @@ class CalculadoraGoldApp:
         self.qty_vars = {}
         self.entries = {}      
         self.pct_labels = {}   
+        
         self.original_pesado_qty = 0
+        self.original_rigido_qty = 0
 
-        # --- VARIÁVEIS DO TKINTER (Declaradas no início para evitar erros de ordem de carregamento) ---
+        # --- VARIÁVEIS DO TKINTER ---
         self.tax_var = tk.IntVar(value=5) 
         self.custom_tax_str = tk.StringVar(value="")
         
@@ -39,33 +69,69 @@ class CalculadoraGoldApp:
         self.new_item_tax = tk.IntVar(value=0)
         self.custom_new_item_tax_str = tk.StringVar(value="")
 
-        # Carregamento de arquivos
+        # --- ESTILIZAÇÃO DO SCROLLBAR ESCURO (TTK) ---
+        self.style = ttk.Style()
+        self.style.theme_use('clam')
+        self.style.configure("Vertical.TScrollbar", 
+                             background=self.bg_card, 
+                             troughcolor=self.bg_dark, 
+                             arrowcolor=self.fg_gray, 
+                             bordercolor=self.bg_dark, 
+                             shadowcolor=self.bg_dark, 
+                             lightcolor=self.bg_card)
+
+        # Carregar arquivos salvos
         if platform.system() == "Windows":
             base_path = os.getenv('APPDATA')
         else:
             base_path = os.path.expanduser("~") 
             
         pasta_app = os.path.join(base_path, "CalculadoraGoldAika")
-        
         if not os.path.exists(pasta_app):
             os.makedirs(pasta_app)
             
         self.arquivo_salvamento = os.path.join(pasta_app, "itens_salvos.json")
         self.carregar_itens_salvos()
 
-        # Configuração das Abas
-        self.notebook = ttk.Notebook(root)
-        self.notebook.pack(padx=10, pady=10, fill='both', expand=True)
+        # --- CRIAÇÃO DO MENU DE NAVEGAÇÃO SUPERIOR ---
+        self.nav_frame = tk.Frame(root, bg=self.bg_dark)
+        self.nav_frame.pack(fill='x', padx=15, pady=(15, 0))
 
-        self.tab_calc = ttk.Frame(self.notebook)
-        self.tab_add = ttk.Frame(self.notebook)
+        # CORREGIDO: Trocado marginRight por padx=(0, 5)
+        self.btn_nav_calc = tk.Button(self.nav_frame, text="Calculadora", font=("Arial", 10, "bold"), 
+                                      bg=self.bg_card, fg=self.accent_gold, activebackground=self.bg_card, 
+                                      activeforeground=self.accent_gold, bd=0, padx=20, pady=8, relief="flat", cursor="hand2",
+                                      command=self.show_calc_tab)
+        self.btn_nav_calc.pack(side='left', padx=(0, 5)) 
 
-        self.notebook.add(self.tab_calc, text="Calculadora")
-        self.notebook.add(self.tab_add, text="Adicionar Novo Item")
+        self.btn_nav_add = tk.Button(self.nav_frame, text="Adicionar Novo Item", font=("Arial", 10, "bold"), 
+                                     bg=self.bg_dark, fg=self.fg_gray, activebackground=self.bg_dark, 
+                                     activeforeground=self.accent_gold, bd=0, padx=20, pady=8, relief="flat", cursor="hand2",
+                                     command=self.show_add_tab)
+        self.btn_nav_add.pack(side='left')
+
+        # --- CONTAINERS DAS ABAS ---
+        self.tab_calc = tk.Frame(root, bg=self.bg_dark)
+        self.tab_calc.pack(fill='both', expand=True, padx=15, pady=10)
+
+        self.tab_add = tk.Frame(root, bg=self.bg_dark)
 
         self.setup_calc_tab()
         self.setup_add_tab()
 
+    def show_calc_tab(self):
+        self.tab_add.pack_forget()
+        self.tab_calc.pack(fill='both', expand=True, padx=15, pady=10)
+        self.btn_nav_calc.config(bg=self.bg_card, fg=self.accent_gold)
+        self.btn_nav_add.config(bg=self.bg_dark, fg=self.fg_gray)
+
+    def show_add_tab(self):
+        self.tab_calc.pack_forget()
+        self.tab_add.pack(fill='both', expand=True, padx=15, pady=10)
+        self.btn_nav_calc.config(bg=self.bg_dark, fg=self.fg_gray)
+        self.btn_nav_add.config(bg=self.bg_card, fg=self.accent_gold)
+
+    # --- SISTEMA DE SALVAMENTO ---
     def carregar_itens_salvos(self):
         if os.path.exists(self.arquivo_salvamento):
             try:
@@ -101,28 +167,43 @@ class CalculadoraGoldApp:
         self.craft_tax_var.set(-1)
         self.calculate_total()
 
+    # --- MONTAGEM DA INTERFACE ---
     def setup_calc_tab(self):
-        # 1. Seleção da Taxa (Venda)
-        tax_frame = ttk.LabelFrame(self.tab_calc, text="Selecione a Taxa da Nação - Venda (%)")
-        tax_frame.pack(fill='x', padx=10, pady=5)
+        # 1. CARD: Seleção da Taxa de Venda
+        tax_card = tk.Frame(self.tab_calc, bg=self.bg_card, padx=15, pady=10)
+        tax_card.pack(fill='x', pady=(0, 10))
 
-        ttk.Radiobutton(tax_frame, text="0%", variable=self.tax_var, value=0, command=self.calculate_total).pack(side='left', padx=10, pady=5)
-        ttk.Radiobutton(tax_frame, text="5%", variable=self.tax_var, value=5, command=self.calculate_total).pack(side='left', padx=10, pady=5)
-        ttk.Radiobutton(tax_frame, text="15%", variable=self.tax_var, value=15, command=self.calculate_total).pack(side='left', padx=10, pady=5)
+        tk.Label(tax_card, text="TAXA DA NAÇÃO - VENDA", font=("Arial", 9, "bold"), bg=self.bg_card, fg=self.accent_gold).pack(anchor='w', pady=(0, 5))
+
+        radios_frame = tk.Frame(tax_card, bg=self.bg_card)
+        radios_frame.pack(fill='x')
+
+        opts = [("0%", 0), ("5%", 5), ("15%", 15)]
+        for text, val in opts:
+            tk.Radiobutton(radios_frame, text=text, variable=self.tax_var, value=val, command=self.calculate_total,
+                           bg=self.bg_card, fg=self.fg_white, selectcolor=self.bg_dark, activebackground=self.bg_card, 
+                           activeforeground=self.accent_gold, font=("Arial", 9, "bold"), bd=0, cursor="hand2").pack(side='left', padx=(0, 15))
         
-        ttk.Radiobutton(tax_frame, text="Outra:", variable=self.tax_var, value=-1, command=self.calculate_total).pack(side='left', padx=5, pady=5)
-        self.entry_custom_tax = ttk.Entry(tax_frame, textvariable=self.custom_tax_str, width=6)
-        self.entry_custom_tax.pack(side='left', padx=2, pady=5)
+        tk.Radiobutton(radios_frame, text="Outra:", variable=self.tax_var, value=-1, command=self.calculate_total,
+                       bg=self.bg_card, fg=self.fg_white, selectcolor=self.bg_dark, activebackground=self.bg_card, 
+                       activeforeground=self.accent_gold, font=("Arial", 9, "bold"), bd=0, cursor="hand2").pack(side='left')
+        
+        self.entry_custom_tax = tk.Entry(radios_frame, textvariable=self.custom_tax_str, width=6, bg=self.bg_dark, fg=self.fg_white,
+                                         insertbackground=self.fg_white, bd=0, highlightthickness=1, highlightbackground=self.border_color,
+                                         highlightcolor=self.accent_gold, font=("Arial", 9, "bold"))
+        self.entry_custom_tax.pack(side='left', padx=5)
         self.entry_custom_tax.bind("<KeyRelease>", lambda e: self.on_custom_tax_change())
-        ttk.Label(tax_frame, text="%").pack(side='left', pady=5)
+        tk.Label(radios_frame, text="%", bg=self.bg_card, fg=self.fg_white, font=("Arial", 9, "bold")).pack(side='left')
 
-        # 2. Lista de Itens (Inventário)
-        self.items_frame = ttk.LabelFrame(self.tab_calc, text="Inventário (Nome, Qtd e Proporção de Valor)")
-        self.items_frame.pack(fill='both', expand=True, padx=10, pady=5)
+        # 2. CARD: Inventário de Itens
+        self.items_card = tk.Frame(self.tab_calc, bg=self.bg_card, padx=15, pady=10)
+        self.items_card.pack(fill='both', expand=True, pady=(0, 10))
 
-        self.canvas = tk.Canvas(self.items_frame, highlightthickness=0)
-        self.scrollbar = ttk.Scrollbar(self.items_frame, orient="vertical", command=self.canvas.yview)
-        self.scrollable_frame = ttk.Frame(self.canvas)
+        tk.Label(self.items_card, text="INVENTÁRIO DE DROPS", font=("Arial", 9, "bold"), bg=self.bg_card, fg=self.accent_gold).pack(anchor='w', pady=(0, 5))
+
+        self.canvas = tk.Canvas(self.items_card, highlightthickness=0, bg=self.bg_card)
+        self.scrollbar = ttk.Scrollbar(self.items_card, orient="vertical", command=self.canvas.yview)
+        self.scrollable_frame = tk.Frame(self.canvas, bg=self.bg_card)
 
         self.scrollable_frame.bind("<Configure>", lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
         self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
@@ -132,87 +213,116 @@ class CalculadoraGoldApp:
 
         self.build_items_list()
 
-        # 3. Painel de Estratégia de Manufatura
-        self.craft_frame = ttk.LabelFrame(self.tab_calc, text="Estratégia de Manufatura (Pesado -> Rígido)")
-        self.craft_frame.pack(fill='x', padx=10, pady=5)
+        # 3. CARD: Painel de Estratégia de Manufatura
+        self.craft_card = tk.Frame(self.tab_calc, bg=self.bg_card, padx=15, pady=10)
+        self.craft_card.pack(fill='x', pady=(0, 10))
 
-        chk_craft = ttk.Checkbutton(self.craft_frame, text="Simular Manufatura (Consome 2 Pesado + 3 Colas Adesivas)", 
-                                    variable=self.simular_craft_var, command=self.toggle_craft_options)
-        chk_craft.grid(row=0, column=0, columnspan=3, padx=10, pady=5, sticky='w')
+        tk.Label(self.craft_card, text="ESTRATÉGIA DE MANUFATURA", font=("Arial", 9, "bold"), bg=self.bg_card, fg=self.accent_gold).grid(row=0, column=0, columnspan=3, sticky='w', pady=(0, 5))
 
-        self.rb_normal = ttk.Radiobutton(self.craft_frame, text="Padrão (Cria 1 Rígido)", variable=self.craft_critico_var, value=False, command=self.calculate_total)
-        self.rb_critico = ttk.Radiobutton(self.craft_frame, text="Crítico (Cria 2 Rígidos)", variable=self.craft_critico_var, value=True, command=self.calculate_total)
+        self.chk_craft = tk.Checkbutton(self.craft_card, text="Simular Manufatura (Consome 2 Pesado + 3 Colas)", 
+                                        variable=self.simular_craft_var, command=self.toggle_craft_options,
+                                        bg=self.bg_card, fg=self.fg_white, selectcolor=self.bg_dark, activebackground=self.bg_card,
+                                        activeforeground=self.accent_gold, font=("Arial", 9, "bold"), bd=0, cursor="hand2")
+        self.chk_craft.grid(row=1, column=0, columnspan=3, sticky='w', pady=5)
+
+        self.rb_normal = tk.Radiobutton(self.craft_card, text="Padrão (Cria 1 Rígido)", variable=self.craft_critico_var, value=False, command=self.calculate_total,
+                                        bg=self.bg_card, fg=self.fg_white, selectcolor=self.bg_dark, activebackground=self.bg_card,
+                                        activeforeground=self.accent_gold, font=("Arial", 9, "bold"), bd=0, cursor="hand2")
+        self.rb_critico = tk.Radiobutton(self.craft_card, text="Crítico (Cria 2 Rígidos)", variable=self.craft_critico_var, value=True, command=self.calculate_total,
+                                         bg=self.bg_card, fg=self.fg_white, selectcolor=self.bg_dark, activebackground=self.bg_card,
+                                         activeforeground=self.accent_gold, font=("Arial", 9, "bold"), bd=0, cursor="hand2")
         
-        self.rb_normal.grid(row=1, column=0, padx=20, pady=2, sticky='w')
-        self.rb_critico.grid(row=1, column=1, padx=10, pady=2, sticky='w')
+        self.rb_normal.grid(row=2, column=0, padx=(10, 20), pady=2, sticky='w')
+        self.rb_critico.grid(row=2, column=1, padx=10, pady=2, sticky='w')
 
-        self.lbl_tax_cola = ttk.Label(self.craft_frame, text="Taxa de Compra da Cola:")
-        self.lbl_tax_cola.grid(row=2, column=0, padx=20, pady=5, sticky='w')
+        self.lbl_tax_cola = tk.Label(self.craft_card, text="Taxa da Cola:", bg=self.bg_card, fg=self.fg_white, font=("Arial", 9, "bold"))
+        self.lbl_tax_cola.grid(row=3, column=0, padx=(10, 5), pady=10, sticky='w')
 
-        self.cola_tax_frame = ttk.Frame(self.craft_frame)
-        self.cola_tax_frame.grid(row=2, column=1, columnspan=2, pady=5, sticky='w')
+        self.cola_tax_frame = tk.Frame(self.craft_card, bg=self.bg_card)
+        self.cola_tax_frame.grid(row=3, column=1, columnspan=2, pady=5, sticky='w')
 
-        self.rb_cola_0 = ttk.Radiobutton(self.cola_tax_frame, text="0%", variable=self.craft_tax_var, value=0, command=self.calculate_total)
-        self.rb_cola_5 = ttk.Radiobutton(self.cola_tax_frame, text="5%", variable=self.craft_tax_var, value=5, command=self.calculate_total)
-        self.rb_cola_15 = ttk.Radiobutton(self.cola_tax_frame, text="15%", variable=self.craft_tax_var, value=15, command=self.calculate_total)
+        self.rb_cola_0 = tk.Radiobutton(self.cola_tax_frame, text="0%", variable=self.craft_tax_var, value=0, command=self.calculate_total,
+                                        bg=self.bg_card, fg=self.fg_white, selectcolor=self.bg_dark, activebackground=self.bg_card,
+                                        font=("Arial", 9, "bold"), bd=0, cursor="hand2")
+        self.rb_cola_5 = tk.Radiobutton(self.cola_tax_frame, text="5%", variable=self.craft_tax_var, value=5, command=self.calculate_total,
+                                        bg=self.bg_card, fg=self.fg_white, selectcolor=self.bg_dark, activebackground=self.bg_card,
+                                        font=("Arial", 9, "bold"), bd=0, cursor="hand2")
+        self.rb_cola_15 = tk.Radiobutton(self.cola_tax_frame, text="15%", variable=self.craft_tax_var, value=15, command=self.calculate_total,
+                                         bg=self.bg_card, fg=self.fg_white, selectcolor=self.bg_dark, activebackground=self.bg_card,
+                                         font=("Arial", 9, "bold"), bd=0, cursor="hand2")
 
-        self.rb_cola_0.pack(side='left', padx=5)
-        self.rb_cola_5.pack(side='left', padx=5)
-        self.rb_cola_15.pack(side='left', padx=5)
+        self.rb_cola_0.pack(side='left', padx=(0, 10))
+        self.rb_cola_5.pack(side='left', padx=(0, 10))
+        self.rb_cola_15.pack(side='left', padx=(0, 10))
 
-        self.rb_cola_custom = ttk.Radiobutton(self.cola_tax_frame, text="Outra:", variable=self.craft_tax_var, value=-1, command=self.calculate_total)
-        self.rb_cola_custom.pack(side='left', padx=5)
+        self.rb_cola_custom = tk.Radiobutton(self.cola_tax_frame, text="Outra:", variable=self.craft_tax_var, value=-1, command=self.calculate_total,
+                                             bg=self.bg_card, fg=self.fg_white, selectcolor=self.bg_dark, activebackground=self.bg_card,
+                                             font=("Arial", 9, "bold"), bd=0, cursor="hand2")
+        self.rb_cola_custom.pack(side='left')
         
-        self.entry_custom_craft_tax = ttk.Entry(self.cola_tax_frame, textvariable=self.custom_craft_tax_str, width=6)
-        self.entry_custom_craft_tax.pack(side='left', padx=2)
+        self.entry_custom_craft_tax = tk.Entry(self.cola_tax_frame, textvariable=self.custom_craft_tax_str, width=6, bg=self.bg_dark, fg=self.fg_white,
+                                               insertbackground=self.fg_white, bd=0, highlightthickness=1, highlightbackground=self.border_color,
+                                               highlightcolor=self.accent_gold, font=("Arial", 9, "bold"))
+        self.entry_custom_craft_tax.pack(side='left', padx=5)
         self.entry_custom_craft_tax.bind("<KeyRelease>", lambda e: self.on_custom_craft_tax_change())
-        ttk.Label(self.cola_tax_frame, text="%").pack(side='left')
+        tk.Label(self.cola_tax_frame, text="%", bg=self.bg_card, fg=self.fg_white, font=("Arial", 9, "bold")).pack(side='left')
 
-        # 4. Botão Calcular e Resultado
-        btn_frame = ttk.Frame(self.tab_calc)
-        btn_frame.pack(fill='x', padx=10, pady=10)
+        # 4. RODAPÉ: Botão de Calcular e Resultado
+        btn_frame = tk.Frame(self.tab_calc, bg=self.bg_dark)
+        btn_frame.pack(fill='x', pady=5)
 
-        ttk.Button(btn_frame, text="Calcular Total", command=self.calculate_total).pack(side='left')
+        self.btn_calcular = tk.Button(btn_frame, text="Calcular Gold", font=("Arial", 10, "bold"), bg=self.accent_gold, fg=self.bg_dark,
+                                      activebackground="#d97706", activeforeground=self.bg_dark, bd=0, padx=15, pady=8, relief="flat", cursor="hand2",
+                                      command=self.calculate_total)
+        self.btn_calcular.pack(side='left')
 
-        self.lbl_total = tk.Label(btn_frame, text="Total de Gold: 0", font=("Arial", 11, "bold"), justify="right")
+        self.lbl_total = tk.Label(btn_frame, text="Total de Gold: 0", font=("Arial", 11, "bold"), justify="right", 
+                                  bg=self.bg_dark, fg=self.fg_white)
         self.lbl_total.pack(side='right', padx=10)
 
         self.toggle_craft_options()
 
     def toggle_craft_options(self):
         pesado_nome = "Couro Cristalino Pesado"
+        rigido_nome = "Couro Cristalino Rígido"
         is_craft_active = self.simular_craft_var.get()
 
         if is_craft_active:
-            self.rb_normal.state(['!disabled'])
-            self.rb_critico.state(['!disabled'])
-            self.rb_cola_0.state(['!disabled'])
-            self.rb_cola_5.state(['!disabled'])
-            self.rb_cola_15.state(['!disabled'])
-            self.rb_cola_custom.state(['!disabled'])
-            self.entry_custom_craft_tax.state(['!disabled'])
+            self.rb_normal.config(state='normal')
+            self.rb_critico.config(state='normal')
+            self.rb_cola_0.config(state='normal')
+            self.rb_cola_5.config(state='normal')
+            self.rb_cola_15.config(state='normal')
+            self.rb_cola_custom.config(state='normal')
+            self.entry_custom_craft_tax.config(state='normal')
 
-            if pesado_nome in self.qty_vars and pesado_nome in self.entries:
+            if pesado_nome in self.qty_vars and rigido_nome in self.qty_vars:
                 try:
                     self.original_pesado_qty = int(self.qty_vars[pesado_nome].get())
                 except ValueError:
                     self.original_pesado_qty = 0
 
-                leftover = self.original_pesado_qty % 2
-                self.qty_vars[pesado_nome].set(str(leftover))
-                self.entries[pesado_nome].config(state='disabled')
-        else:
-            self.rb_normal.state(['disabled'])
-            self.rb_critico.state(['disabled'])
-            self.rb_cola_0.state(['disabled'])
-            self.rb_cola_5.state(['disabled'])
-            self.rb_cola_15.state(['disabled'])
-            self.rb_cola_custom.state(['disabled'])
-            self.entry_custom_craft_tax.state(['disabled'])
+                try:
+                    self.original_rigido_qty = int(self.qty_vars[rigido_nome].get())
+                except ValueError:
+                    self.original_rigido_qty = 0
 
-            if pesado_nome in self.qty_vars and pesado_nome in self.entries:
+                self.entries[pesado_nome].config(state='disabled')
+                self.entries[rigido_nome].config(state='disabled')
+        else:
+            self.rb_normal.config(state='disabled')
+            self.rb_critico.config(state='disabled')
+            self.rb_cola_0.config(state='disabled')
+            self.rb_cola_5.config(state='disabled')
+            self.rb_cola_15.config(state='disabled')
+            self.rb_cola_custom.config(state='disabled')
+            self.entry_custom_craft_tax.config(state='disabled')
+
+            if pesado_nome in self.qty_vars and rigido_nome in self.qty_vars:
                 self.entries[pesado_nome].config(state='normal')
+                self.entries[rigido_nome].config(state='normal')
                 self.qty_vars[pesado_nome].set(str(self.original_pesado_qty))
+                self.qty_vars[rigido_nome].set(str(self.original_rigido_qty))
 
         self.calculate_total()
 
@@ -224,10 +334,10 @@ class CalculadoraGoldApp:
         self.pct_labels.clear()
 
         # Cabeçalhos
-        ttk.Label(self.scrollable_frame, text="").grid(row=0, column=0)
-        ttk.Label(self.scrollable_frame, text="Nome do Item", font=("Arial", 9, "bold")).grid(row=0, column=1, padx=5, pady=5, sticky='w')
-        ttk.Label(self.scrollable_frame, text="Quantidade", font=("Arial", 9, "bold")).grid(row=0, column=2, padx=10, pady=5, sticky='w')
-        ttk.Label(self.scrollable_frame, text="Proporção", font=("Arial", 9, "bold")).grid(row=0, column=3, padx=10, pady=5, sticky='w')
+        tk.Label(self.scrollable_frame, text="", bg=self.bg_card).grid(row=0, column=0)
+        tk.Label(self.scrollable_frame, text="Nome do Item", font=("Arial", 9, "bold"), bg=self.bg_card, fg=self.accent_gold).grid(row=0, column=1, padx=5, pady=5, sticky='w')
+        tk.Label(self.scrollable_frame, text="Quantidade", font=("Arial", 9, "bold"), bg=self.bg_card, fg=self.accent_gold).grid(row=0, column=2, padx=10, pady=5, sticky='w')
+        tk.Label(self.scrollable_frame, text="Proporção", font=("Arial", 9, "bold"), bg=self.bg_card, fg=self.accent_gold).grid(row=0, column=3, padx=10, pady=5, sticky='w')
 
         todos_itens = list(self.default_items.keys()) + list(self.custom_items.keys())
         is_craft_active = self.simular_craft_var.get()
@@ -237,66 +347,78 @@ class CalculadoraGoldApp:
             is_custom = item in self.custom_items
             
             if is_custom:
-                btn_del = tk.Button(self.scrollable_frame, text=" X ", fg="red", relief="flat", font=("Arial", 8, "bold"),
-                                    cursor="hand2", command=lambda i=item: self.deletar_item(i))
+                btn_del = tk.Button(self.scrollable_frame, text=" X ", fg=self.color_danger, bg=self.bg_card, 
+                                    activebackground=self.bg_dark, activeforeground=self.color_danger, 
+                                    relief="flat", font=("Arial", 8, "bold"), cursor="hand2", bd=0)
                 btn_del.grid(row=row, column=0, padx=5, pady=2)
+                btn_del.config(command=lambda i=item: self.deletar_item(i))
             else:
-                ttk.Label(self.scrollable_frame, text="").grid(row=row, column=0)
+                tk.Label(self.scrollable_frame, text="", bg=self.bg_card).grid(row=row, column=0)
 
-            ttk.Label(self.scrollable_frame, text=item).grid(row=row, column=1, padx=5, pady=2, sticky='w')
+            tk.Label(self.scrollable_frame, text=item, bg=self.bg_card, fg=self.fg_white).grid(row=row, column=1, padx=5, pady=2, sticky='w')
             
             var = tk.StringVar(value="0")
             self.qty_vars[item] = var
             
-            entry = ttk.Entry(self.scrollable_frame, textvariable=var, width=12)
+            entry = tk.Entry(self.scrollable_frame, textvariable=var, width=12, bg=self.bg_dark, fg=self.fg_white,
+                             insertbackground=self.fg_white, disabledbackground="#0a0d16", disabledforeground=self.fg_gray,
+                             bd=0, highlightthickness=1, highlightbackground=self.border_color, highlightcolor=self.accent_gold)
             entry.grid(row=row, column=2, padx=10, pady=2)
             entry.bind("<Return>", self.calculate_total)
             self.entries[item] = entry
 
-            if item == "Couro Cristalino Pesado" and is_craft_active:
-                entry.config(state='disabled')
-                var.set(str(self.original_pesado_qty % 2))
+            if is_craft_active:
+                if item == "Couro Cristalino Pesado":
+                    entry.config(state='disabled')
+                    var.set(str(self.original_pesado_qty % 2))
+                elif item == "Couro Cristalino Rígido":
+                    entry.config(state='disabled')
+                    crafts = self.original_pesado_qty // 2
+                    gained = crafts * 2 if self.craft_critico_var.get() else crafts * 1
+                    var.set(str(self.original_rigido_qty + gained))
 
-            lbl_pct = tk.Label(self.scrollable_frame, text="0.0%", font=("Arial", 9), fg="gray")
+            lbl_pct = tk.Label(self.scrollable_frame, text="0.0%", font=("Arial", 9), bg=self.bg_card, fg=self.fg_gray)
             lbl_pct.grid(row=row, column=3, padx=10, pady=2, sticky='w')
             self.pct_labels[item] = lbl_pct
             
             row += 1
 
     def setup_add_tab(self):
-        frame = ttk.Frame(self.tab_add)
-        frame.pack(padx=10, pady=10, fill='both', expand=True)
+        add_card = tk.Frame(self.tab_add, bg=self.bg_card, padx=20, pady=20)
+        add_card.pack(fill='both', expand=True, pady=10)
 
-        ttk.Label(frame, text="Nome do Item:").grid(row=0, column=0, sticky='w', pady=10)
-        ttk.Entry(frame, textvariable=self.new_item_name, width=25).grid(row=0, column=1, pady=10, padx=5)
+        tk.Label(add_card, text="CADASTRAR NOVO ITEM", font=("Arial", 10, "bold"), bg=self.bg_card, fg=self.accent_gold).grid(row=0, column=0, columnspan=2, sticky='w', pady=(0, 15))
 
-        ttk.Label(frame, text="Valor Unitário do Item:").grid(row=1, column=0, sticky='w', pady=10)
-        ttk.Entry(frame, textvariable=self.new_item_value, width=25).grid(row=1, column=1, pady=10, padx=5)
+        tk.Label(add_card, text="Nome do Item:", bg=self.bg_card, fg=self.fg_white).grid(row=1, column=0, sticky='w', pady=10)
+        self.entry_name = tk.Entry(add_card, textvariable=self.new_item_name, width=25, bg=self.bg_dark, fg=self.fg_white,
+                                   insertbackground=self.fg_white, bd=0, highlightthickness=1, highlightbackground=self.border_color, highlightcolor=self.accent_gold)
+        self.entry_name.grid(row=1, column=1, pady=10, padx=5, sticky='w')
 
-        ttk.Label(frame, text="Esse valor já é baseado em\nqual % de taxa?").grid(row=2, column=0, sticky='w', pady=10)
+        tk.Label(add_card, text="Valor Unitário do Item:", bg=self.bg_card, fg=self.fg_white).grid(row=2, column=0, sticky='w', pady=10)
+        self.entry_val = tk.Entry(add_card, textvariable=self.new_item_value, width=25, bg=self.bg_dark, fg=self.fg_white,
+                                  insertbackground=self.fg_white, bd=0, highlightthickness=1, highlightbackground=self.border_color, highlightcolor=self.accent_gold)
+        self.entry_val.grid(row=2, column=1, pady=10, padx=5, sticky='w')
+
+        tk.Label(add_card, text="Taxa do valor digitado:", bg=self.bg_card, fg=self.fg_white).grid(row=3, column=0, sticky='w', pady=10)
         
-        tax_cb_frame = ttk.Frame(frame)
-        tax_cb_frame.grid(row=2, column=1, pady=10, sticky='w')
-        ttk.Radiobutton(tax_cb_frame, text="0%", variable=self.new_item_tax, value=0).pack(side='left', padx=2)
-        ttk.Radiobutton(tax_cb_frame, text="5%", variable=self.new_item_tax, value=5).pack(side='left', padx=2)
-        ttk.Radiobutton(tax_cb_frame, text="15%", variable=self.new_item_tax, value=15).pack(side='left', padx=2)
+        tax_cb_frame = tk.Frame(add_card, bg=self.bg_card)
+        tax_cb_frame.grid(row=3, column=1, pady=10, sticky='w')
         
-        ttk.Radiobutton(tax_cb_frame, text="Outra:", variable=self.new_item_tax, value=-1).pack(side='left', padx=2)
-        self.entry_custom_new_tax = ttk.Entry(tax_cb_frame, textvariable=self.custom_new_item_tax_str, width=6)
-        self.entry_custom_new_tax.pack(side='left', padx=2)
+        tk.Radiobutton(tax_cb_frame, text="0%", variable=self.new_item_tax, value=0, bg=self.bg_card, fg=self.fg_white, selectcolor=self.bg_dark, font=("Arial", 9, "bold"), bd=0, cursor="hand2").pack(side='left', padx=(0, 10))
+        tk.Radiobutton(tax_cb_frame, text="5%", variable=self.new_item_tax, value=5, bg=self.bg_card, fg=self.fg_white, selectcolor=self.bg_dark, font=("Arial", 9, "bold"), bd=0, cursor="hand2").pack(side='left', padx=(0, 10))
+        tk.Radiobutton(tax_cb_frame, text="15%", variable=self.new_item_tax, value=15, bg=self.bg_card, fg=self.fg_white, selectcolor=self.bg_dark, font=("Arial", 9, "bold"), bd=0, cursor="hand2").pack(side='left', padx=(0, 10))
+        
+        tk.Radiobutton(tax_cb_frame, text="Outra:", variable=self.new_item_tax, value=-1, bg=self.bg_card, fg=self.fg_white, selectcolor=self.bg_dark, font=("Arial", 9, "bold"), bd=0, cursor="hand2").pack(side='left')
+        self.entry_custom_new_tax = tk.Entry(tax_cb_frame, textvariable=self.custom_new_item_tax_str, width=6, bg=self.bg_dark, fg=self.fg_white,
+                                             insertbackground=self.fg_white, bd=0, highlightthickness=1, highlightbackground=self.border_color, highlightcolor=self.accent_gold)
+        self.entry_custom_new_tax.pack(side='left', padx=5)
         self.entry_custom_new_tax.bind("<KeyRelease>", lambda e: self.new_item_tax.set(-1))
-        ttk.Label(tax_cb_frame, text="%").pack(side='left')
+        tk.Label(tax_cb_frame, text="%", bg=self.bg_card, fg=self.fg_white, font=("Arial", 9, "bold")).pack(side='left')
 
-        ttk.Button(frame, text="Adicionar Item", command=self.add_item).grid(row=3, column=0, columnspan=2, pady=20)
-
-    def deletar_item(self, item_name):
-        resposta = messagebox.askyesno("Excluir Item", f"Deseja realmente excluir '{item_name}' da sua lista salva?")
-        if resposta:
-            if item_name in self.custom_items:
-                del self.custom_items[item_name] 
-                self.salvar_itens_customizados() 
-                self.build_items_list()          
-                self.calculate_total()           
+        self.btn_salvar = tk.Button(add_card, text="Salvar Novo Item", font=("Arial", 10, "bold"), bg=self.accent_gold, fg=self.bg_dark,
+                                    activebackground="#d97706", activeforeground=self.bg_dark, bd=0, padx=20, pady=8, relief="flat", cursor="hand2",
+                                    command=self.add_item)
+        self.btn_salvar.grid(row=4, column=0, columnspan=2, pady=30, sticky='w')
 
     def add_item(self):
         name = self.new_item_name.get().strip()
@@ -337,7 +459,7 @@ class CalculadoraGoldApp:
         self.new_item_tax.set(0)
         self.custom_new_item_tax_str.set("")
 
-        self.notebook.select(0)
+        self.show_calc_tab()
 
     def calculate_total(self, event=None):
         tax_venda = self.safe_get_tax(self.tax_var, self.custom_tax_str)
@@ -358,6 +480,7 @@ class CalculadoraGoldApp:
 
         if self.simular_craft_var.get():
             qtys_digitadas[nome_pesado] = self.original_pesado_qty
+            qtys_digitadas[nome_rigido] = self.original_rigido_qty
 
         def calcular_gold_do_inventario(dicionario_quantidades):
             gold = 0.0
@@ -390,6 +513,16 @@ class CalculadoraGoldApp:
             qtys_finais_para_proporcao[nome_pesado] = pesados_sobrando
             qtys_finais_para_proporcao[nome_rigido] = qtd_rigido + rigidos_ganhos
 
+            if nome_pesado in self.entries and nome_rigido in self.entries:
+                self.entries[nome_pesado].config(state='normal')
+                self.entries[nome_rigido].config(state='normal')
+                
+                self.qty_vars[nome_pesado].set(str(pesados_sobrando))
+                self.qty_vars[nome_rigido].set(str(qtd_rigido + rigidos_ganhos))
+                
+                self.entries[nome_pesado].config(state='disabled')
+                self.entries[nome_rigido].config(state='disabled')
+
             gold_simulado = calcular_gold_do_inventario(qtys_finais_para_proporcao)
 
             preco_cola_atual = self.preco_base_cola * multiplier_compra
@@ -403,16 +536,17 @@ class CalculadoraGoldApp:
             dif_str = f"{int(round(abs(diferenca))):,}".replace(",", ".")
 
             if diferenca > 0:
-                self.lbl_total.config(text=f"Total c/ Manufatura: {tot_str}\n(+{dif_str} de Lucro!)", fg="green")
+                self.lbl_total.config(text=f"Total c/ Manufatura: {tot_str}\n(+{dif_str} de Lucro!)", fg=self.color_success)
             elif diferenca < 0:
-                self.lbl_total.config(text=f"Total c/ Manufatura: {tot_str}\n(-{dif_str} de Prejuízo!)", fg="red")
+                self.lbl_total.config(text=f"Total c/ Manufatura: {tot_str}\n(-{dif_str} de Prejuízo!)", fg=self.color_danger)
             else:
-                self.lbl_total.config(text=f"Total c/ Manufatura: {tot_str}\n(Elas por Elas / Sem lucro)", fg="black")
+                self.lbl_total.config(text=f"Total c/ Manufatura: {tot_str}\n(Elas por Elas)", fg=self.fg_white)
 
         else:
             tot_str = f"{int(round(total_sem_craft)):,}".replace(",", ".")
-            self.lbl_total.config(text=f"Total de Gold: {tot_str}", fg="black")
+            self.lbl_total.config(text=f"Total de Gold: {tot_str}", fg=self.fg_white)
 
+        # --- ATUALIZAÇÃO DA COLUNA DE PROPORÇÕES (PORCENTAGENS) ---
         valores_gold_finais = {}
         total_gold_bruto_finais = 0.0
 
@@ -454,13 +588,13 @@ class CalculadoraGoldApp:
             pct = porcentagens.get(item, 0.0)
             
             if total_gold_bruto_finais == 0 or pct == 0:
-                lbl.config(text="0.0%", fg="gray", font=("Arial", 9))
+                lbl.config(text="0.0%", fg=self.fg_gray, font=("Arial", 9))
             elif item == max_item and max_pct > 0:
-                lbl.config(text=f"▲ {pct:.1f}%", fg="#2e7d32", font=("Arial", 9, "bold"))
+                lbl.config(text=f"▲ {pct:.1f}%", fg=self.color_success, font=("Arial", 9, "bold"))
             elif item == min_item and itens_ativos > 1:
-                lbl.config(text=f"▼ {pct:.1f}%", fg="#d84315", font=("Arial", 9, "bold"))
+                lbl.config(text=f"▼ {pct:.1f}%", fg=self.color_warning, font=("Arial", 9, "bold"))
             else:
-                lbl.config(text=f"{pct:.1f}%", fg="black", font=("Arial", 9))
+                lbl.config(text=f"{pct:.1f}%", fg=self.fg_white, font=("Arial", 9))
 
 if __name__ == "__main__":
     root = tk.Tk()
