@@ -26,6 +26,7 @@ Uma ferramenta de código aberto (open-source) feita em Python para ajudar a com
 1. Vá na aba de [Releases](https://github.com/Shimusin/calculadura-de-golds-estrada-espiral-aika-br/releases) aqui do lado direito do repositório.
 2. Baixe o arquivo `calculadora_gold.exe`.
 3. É só abrir e usar! (Não precisa instalar nada e já vem com ícone de gold embutido).
+   
 *Nota: Como é um programa feito de fã para fã e sem um certificado digital pago, o Windows Defender pode dar um aviso de "Software Desconhecido" na primeira abertura. Basta clicar em "Mais informações" > "Executar assim mesmo".*
 
 **Opção 2: Rodar pelo Código-Fonte (Para programadores)**
